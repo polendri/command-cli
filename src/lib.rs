@@ -6,65 +6,40 @@ use std::fmt;
 use std::iter::IntoIterator;
 use io_providers::StreamProvider;
 
-pub struct CommandManager {
-    cmds: &'static [Command],
+pub struct CommandManager<'a> {
+    cmds: &'a [Command],
 }
 
-impl CommandManager {
-    pub fn new(cmds: &'static [Command]) -> CommandManager {
+impl<'a> CommandManager<'a> {
+    pub fn new<'b>(cmds: &'b [Command]) -> CommandManager<'b> {
         match Self::try_new(cmds) {
             Ok(cm) => cm,
             Err(e) => panic!("{}", e),
         }
     }
 
-    fn try_new(cmds: &'static [Command]) -> CommandValidationResult<'static, CommandManager> {
+    fn try_new<'b>(cmds: &'b [Command]) -> Result<CommandManager<'b>, String> {
         try!(Self::validate_cmds(cmds));
         Ok(CommandManager { cmds: cmds })
     }
 
-    fn validate_cmds(cmds: &[Command]) -> CommandValidationResult<()> {
+    fn validate_cmds(cmds: &[Command]) -> Result<(), String> {
         for cmd in cmds {
             try!(Self::validate_params(cmd));
         }
+
         Ok(())
     }
 
-    fn validate_params(cmd: &Command) -> CommandValidationResult<()> {
-        let repeating_param_count = cmd.params.iter().filter(|p| p.repeating).count();
-        if repeating_param_count > 1 {
-            return Err(CommandValidationError { kind: TooManyRepeatingParams, cmd: cmd });
+    fn validate_params(cmd: &Command) -> Result<(), String> {
+        let dynamic_param_count = cmd.params.iter().filter(|p| p.repeating || !p.required).count();
+        if dynamic_param_count > 1 {
+            return Err(format!("command-cli panic: Command '{}' cannot have more than one repeating or optional parameter.", cmd.name));
         }
 
-        let optional_param_count = cmd.params.iter().filter(|p| !p.required).count();
-        if repeating_param_count > 1 {
-            return Err(CommandValidationError { kind: TooManyOptionalParams, cmd: cmd });
-        }
         Ok(())
     }
 }
-
-struct CommandValidationError<'a> {
-    pub kind: CommandValidationErrorKind,
-    pub cmd: &'a Command,
-}
-
-impl<'a> fmt::Display for CommandValidationError<'a> {
-    fn fmt(&self, f: &mut fmt::Formatter) -> fmt::Result {
-        match(self.kind) {
-            TooManyRepeatingParams => write!(f, "command-cli panic: Command '{}' cannot have more than one repeating parameter.", self.cmd.name),
-            TooManyOptionalParams => write!(f, "command-cli panic: Command '{}' cannot have more than one optional parameter.", self.cmd.name),
-        }
-    }
-}
-
-enum CommandValidationErrorKind {
-    TooManyRepeatingParams,
-    TooManyOptionalParams,
-}
-use CommandValidationErrorKind::*;
-
-type CommandValidationResult<'a, T> = Result<T, CommandValidationError<'a>>;
 
 /// Describes a command along with how to execute it and display help info for it.
 pub struct Command {
