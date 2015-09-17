@@ -173,4 +173,103 @@ mod tests {
 
         assert_eq!(0, arguments.for_param(&param).len());
     }
+
+    #[test]
+    fn arguments__new__required__success() {
+        let param1 = Parameter { name: "name1", required: true, repeating: false };
+        let param2 = Parameter { name: "name2", required: true, repeating: false };
+        let (arg1, arg2) = ("arg1".to_string(), "arg2".to_string());
+        let args = vec![arg1.clone(), arg2.clone()];
+
+        let arguments = Arguments::new(&[&param1, &param2], args).unwrap();
+
+        assert_eq!(&vec![arg1], arguments.for_param(&param1));
+        assert_eq!(&vec![arg2], arguments.for_param(&param2));
+    }
+
+    #[test]
+    fn arguments__new__repeating_param_and_args__success() {
+        let param = Parameter { name: "name", required: true, repeating: true };
+        let args = vec!["arg1".to_string(), "arg2".to_string()];
+
+        let arguments = Arguments::new(&[&param], args.clone()).unwrap();
+
+        assert_eq!(&args, arguments.for_param(&param));
+    }
+
+    #[test]
+    fn arguments__new__repeating_then_required__success() {
+        let param1 = Parameter { name: "name1", required: true, repeating: true };
+        let param2 = Parameter { name: "name2", required: true, repeating: false };
+        let (arg1, arg2, arg3) = ("arg1".to_string(), "arg2".to_string(), "arg3".to_string());
+        let args = vec![arg1.clone(), arg2.clone(), arg3.clone()];
+
+        let arguments = Arguments::new(&[&param1, &param2], args).unwrap();
+
+        assert_eq!(&vec![arg1, arg2], arguments.for_param(&param1));
+        assert_eq!(&vec![arg3], arguments.for_param(&param2));
+    }
+
+    #[test]
+    fn arguments__new__required_then_repeating__success() {
+        let param1 = Parameter { name: "name", required: true, repeating: false };
+        let param2 = Parameter { name: "name", required: true, repeating: true };
+        let (arg1, arg2, arg3) = ("arg1".to_string(), "arg2".to_string(), "arg3".to_string());
+        let args = vec![arg1.clone(), arg2.clone(), arg3.clone()];
+
+        let arguments = Arguments::new(&[&param1, &param2], args).unwrap();
+
+        assert_eq!(&vec![arg1], arguments.for_param(&param1));
+        assert_eq!(&vec![arg2, arg3], arguments.for_param(&param2));
+    }
+
+    #[test]
+    fn arguments__new__optional_then_required_with_one_arg__success() {
+        let param1 = Parameter { name: "name1", required: false, repeating: false };
+        let param2 = Parameter { name: "name2", required: true, repeating: false };
+        let args = vec!["arg1".to_string()];
+
+        let arguments = Arguments::new(&[&param1, &param2], args.clone()).unwrap();
+
+        assert_eq!(0, arguments.for_param(&param1).len());
+        assert_eq!(&args, arguments.for_param(&param2));
+    }
+
+    #[test]
+    fn arguments__new__optional_then_required_with_two_args__success() {
+        let param1 = Parameter { name: "name1", required: false, repeating: false };
+        let param2 = Parameter { name: "name2", required: true, repeating: false };
+        let (arg1, arg2) = ("arg1".to_string(), "arg2".to_string());
+        let args = vec![arg1.clone(), arg2.clone()];
+
+        let arguments = Arguments::new(&[&param1, &param2], args).unwrap();
+
+        assert_eq!(&vec![arg1], arguments.for_param(&param1));
+        assert_eq!(&vec![arg2], arguments.for_param(&param2));
+    }
+
+    #[test]
+    fn arguments__new__required_then_optional_with_one_arg__success() {
+        let param1 = Parameter { name: "name1", required: true, repeating: false };
+        let param2 = Parameter { name: "name2", required: false, repeating: false };
+        let args = vec!["arg1".to_string()];
+
+        let arguments = Arguments::new(&[&param1, &param2], args.clone()).unwrap();
+
+        assert_eq!(&args, arguments.for_param(&param1));
+        assert_eq!(0, arguments.for_param(&param2).len());
+    }
+
+    #[test]
+    fn arguments__new__required_then_optional_with_two_args__success() {
+        let param1 = Parameter { name: "name1", required: true, repeating: false };
+        let param2 = Parameter { name: "name2", required: false, repeating: false };
+        let (arg1, arg2) = ("arg1".to_string(), "arg2".to_string());
+        let args = vec![arg1.clone(), arg2.clone()];
+
+        let arguments = Arguments::new(&[&param1, &param2], args).unwrap();
+
+        assert_eq!(&vec![arg1], arguments.for_param(&param1));
+        assert_eq!(&vec![arg2], arguments.for_param(&param2));
+    }
 }
