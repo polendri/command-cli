@@ -1,0 +1,176 @@
+extern crate io_providers;
+
+use std::collections::HashMap;
+use std::error;
+use std::fmt;
+use std::iter::IntoIterator;
+use io_providers::StreamProvider;
+
+pub struct CommandManager {
+    cmds: &'static [Command],
+}
+
+impl CommandManager {
+    pub fn new(cmds: &'static [Command]) -> CommandManager {
+        match Self::try_new(cmds) {
+            Ok(cm) => cm,
+            Err(e) => panic!("{}", e),
+        }
+    }
+
+    fn try_new(cmds: &'static [Command]) -> CommandValidationResult<'static, CommandManager> {
+        try!(Self::validate_cmds(cmds));
+        Ok(CommandManager { cmds: cmds })
+    }
+
+    fn validate_cmds(cmds: &[Command]) -> CommandValidationResult<()> {
+        for cmd in cmds {
+            try!(Self::validate_params(cmd));
+        }
+        Ok(())
+    }
+
+    fn validate_params(cmd: &Command) -> CommandValidationResult<()> {
+        let repeating_param_count = cmd.params.iter().filter(|p| p.repeating).count();
+        if repeating_param_count > 1 {
+            return Err(CommandValidationError { kind: TooManyRepeatingParams, cmd: cmd });
+        }
+
+        let optional_param_count = cmd.params.iter().filter(|p| !p.required).count();
+        if repeating_param_count > 1 {
+            return Err(CommandValidationError { kind: TooManyOptionalParams, cmd: cmd });
+        }
+        Ok(())
+    }
+}
+
+struct CommandValidationError<'a> {
+    pub kind: CommandValidationErrorKind,
+    pub cmd: &'a Command,
+}
+
+impl<'a> fmt::Display for CommandValidationError<'a> {
+    fn fmt(&self, f: &mut fmt::Formatter) -> fmt::Result {
+        match(self.kind) {
+            TooManyRepeatingParams => write!(f, "command-cli panic: Command '{}' cannot have more than one repeating parameter.", self.cmd.name),
+            TooManyOptionalParams => write!(f, "command-cli panic: Command '{}' cannot have more than one optional parameter.", self.cmd.name),
+        }
+    }
+}
+
+enum CommandValidationErrorKind {
+    TooManyRepeatingParams,
+    TooManyOptionalParams,
+}
+use CommandValidationErrorKind::*;
+
+type CommandValidationResult<'a, T> = Result<T, CommandValidationError<'a>>;
+
+/// Describes a command along with how to execute it and display help info for it.
+pub struct Command {
+    /// The name of the command.
+    pub name: &'static str,
+
+    /// A one-line description of what the command does.
+    pub short_desc: &'static str,
+
+    /// A description of the parameters the command takes.
+    pub params: &'static [Parameter],
+
+    /// A function which, given the command arguments and i/o handles, executes the command.
+    pub handler: fn(&Arguments, &mut StreamProvider) -> CommandResult,
+}
+
+/// Describes the errors which can result from a command invocation.
+pub enum CommandResult {
+    /// The command completed successfully.
+    Success,
+    /// The command was invoked incorrectly.
+    ArgumentError,
+    /// An error occurred while executing the command.
+    ExecutionError(Option<Box<error::Error>>),
+}
+use self::CommandResult::*;
+
+/// Describes a command parameter and how to display help info for it.
+#[derive(Eq, PartialEq, Hash)]
+pub struct Parameter {
+    pub name: &'static str,
+    pub required: bool,
+    pub repeating: bool,
+}
+
+/// Describes the arguments to a command.
+pub struct Arguments<'a> {
+    /// A mapping from `Parameter` to the associated arguments for that parameter.
+    param_to_args: HashMap<&'a Parameter, Vec<String>>,
+}
+
+impl<'a> Arguments<'a> {
+    pub fn for_param(&self, param: &'a Parameter) -> &Vec<String> {
+        &self.param_to_args[param]
+    }
+
+    /// Constructs a new `Arguments`, yielding `None` if the arguments do not
+    /// match the provided parameter specification.
+    fn new<'b>(params: &[&'b Parameter], args: Vec<String>) -> Option<Arguments<'b>> {
+        let mut param_to_args = HashMap::new();
+        let mut min_remaining = params.iter().filter(|p| p.required).count();
+        let mut remaining = args.len();
+        let mut args_iter = args.into_iter();
+
+        for param in params {
+            if remaining < min_remaining {
+                return None;
+            }
+
+            if param.required {
+                min_remaining = min_remaining - 1;
+            }
+
+            // Have to loop here instead of using .take(x).collect() because Vec::IntoIter
+            // isn't clonable
+            let param_args_count =
+                if remaining == min_remaining {
+                    0
+                } else {
+                    if param.repeating { remaining - min_remaining } else { 1 }
+                };
+            let mut param_args = Vec::with_capacity(param_args_count);
+            for _ in 0..param_args_count {
+                param_args.push(args_iter.next().unwrap());
+            }
+            remaining = remaining - param_args_count;
+
+            param_to_args.insert(*param, param_args);
+        }
+
+        Some(Arguments { param_to_args: param_to_args })
+    }
+}
+
+#[cfg(test)]
+#[allow(non_snake_case)]
+mod tests {
+    use super::*;
+
+    #[test]
+    fn arguments__new__too_few_args__returns_none() {
+        let param = Parameter { name: "name", required: true, repeating: false };
+        let args = Vec::new();
+
+        let result = Arguments::new(&[&param], args);
+
+        assert!(result.is_none());
+    }
+
+    #[test]
+    fn arguments__new__optional_param_and_no_args__returns_empty() {
+        let param = Parameter { name: "name", required: false, repeating: false };
+        let args = Vec::new();
+
+        let arguments = Arguments::new(&[&param], args).unwrap();
+
+        assert_eq!(0, arguments.for_param(&param).len());
+    }
+}
