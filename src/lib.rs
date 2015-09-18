@@ -1,3 +1,31 @@
+/// Unwraps a `Result`, writing a message to stderr and returning an `ExecutionError` on failure.
+#[macro_export]
+macro_rules! cmd_try {
+    ($i:expr, $r:expr, $m:expr) => {
+        match $r {
+            Ok(v) => v,
+            Err(e) => {
+                write!($i.error(), $m).unwrap();
+                return CommandResult::ExecutionError(Some(Box::new(e)));
+            },
+        }
+    }
+}
+
+/// Unwraps an `Option`, writing a message to stderr and returning an `ExecutionError` on failure.
+#[macro_export]
+macro_rules! cmd_expect {
+    ($i:expr, $r:expr, $m:expr) => {
+        match $r {
+            Some(v) => v,
+            None => {
+                write!($i.error(), $m).unwrap();
+                return CommandResult::ExecutionError(None);
+            },
+        }
+    }
+}
+
 extern crate io_providers;
 
 use std::collections::HashMap;
