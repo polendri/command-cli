@@ -33,7 +33,7 @@ use std::error;
 use std::fmt;
 use std::io::Write;
 use std::iter::IntoIterator;
-use io_providers::StreamProvider;
+use io_providers::stream;
 
 const SUCCESS_EXIT_CODE: i32 = 0;
 const ARGUMENT_ERROR_EXIT_CODE: i32 = 1;
@@ -50,7 +50,7 @@ pub struct Application<'c, 'p:'c> {
 
 impl<'c, 'p> Application<'c, 'p> {
     /// Prints usage information for the application.
-    pub fn print_usage(&self, sp: &mut StreamProvider) {
+    pub fn print_usage(&self, sp: &mut stream::Provider) {
         writeln!(sp.error(), "Usage: {} COMMAND [ARGS]\n", self.name).unwrap();
         writeln!(sp.error(), "commands:").unwrap();
 
@@ -63,7 +63,7 @@ impl<'c, 'p> Application<'c, 'p> {
     ///
     /// Returns the error code with which to exit, and a reference to the invoked
     /// command if one was invoked.
-    pub fn run(&self, sp: &mut StreamProvider, args: Vec<String>)
+    pub fn run(&self, sp: &mut stream::Provider, args: Vec<String>)
         -> (i32, Option<&'c Command<'p>>)
     {
         if args.len() <= 1 {
@@ -121,15 +121,15 @@ pub struct Command<'p> {
     pub params: &'p [Parameter],
 
     /// A function which, given the command arguments and i/o handles, executes the command.
-    pub handler: fn(&mut StreamProvider, &Arguments) -> CommandResult,
+    pub handler: fn(&mut stream::Provider, &Arguments) -> CommandResult,
 }
 
 impl<'p> Command<'p> {
-    pub fn print_usage(&self, sp: &mut StreamProvider, app_name: &str) {
+    pub fn print_usage(&self, sp: &mut stream::Provider, app_name: &str) {
         writeln!(sp.error(), "Usage: {} {}", app_name, self).unwrap();
     }
 
-    pub fn print_short_desc(&self, sp: &mut StreamProvider) {
+    pub fn print_short_desc(&self, sp: &mut stream::Provider) {
         writeln!(sp.error(), "{: <22}  {}", self.name, self.short_desc).unwrap();
     }
 }
@@ -238,7 +238,6 @@ impl<'a> Arguments<'a> {
 mod tests {
     use super::*;
     use std::io;
-    use io_providers::StreamProvider;
     use io_providers::stream;
 
     #[test]
@@ -630,22 +629,22 @@ mod tests {
     }
 
     #[allow(unused_variables)]
-    fn dummy_success_handler(sp: &mut StreamProvider, args: &Arguments) -> CommandResult {
+    fn dummy_success_handler(sp: &mut stream::Provider, args: &Arguments) -> CommandResult {
         CommandResult::Success
     }
 
     #[allow(unused_variables)]
-    fn dummy_arg_error_handler(sp: &mut StreamProvider, args: &Arguments) -> CommandResult {
+    fn dummy_arg_error_handler(sp: &mut stream::Provider, args: &Arguments) -> CommandResult {
         CommandResult::ArgumentError
     }
 
     #[allow(unused_variables)]
-    fn dummy_exec_error_handler(sp: &mut StreamProvider, args: &Arguments) -> CommandResult {
+    fn dummy_exec_error_handler(sp: &mut stream::Provider, args: &Arguments) -> CommandResult {
         CommandResult::ExecutionError(None)
     }
 
     #[allow(unused_variables)]
-    fn dummy_exec_error_with_inner_handler(sp: &mut StreamProvider, args: &Arguments) -> CommandResult {
+    fn dummy_exec_error_with_inner_handler(sp: &mut stream::Provider, args: &Arguments) -> CommandResult {
         CommandResult::ExecutionError(Some(Box::new(io::Error::new(io::ErrorKind::Other, ":("))))
     }
 }

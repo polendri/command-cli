@@ -8,5 +8,5 @@ readme = "README.md"
 keywords = ["cli", "command-line"]
 license = "MIT"
 
-[dependencies.io-providers]
-git = "https://github.com/pshendry/io-providers.git"
+[dependencies]
+io-providers = "0.1"
