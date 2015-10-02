@@ -1,3 +1,10 @@
+//! A create for creating CLI applications in Rust which have a command-style
+//! interface (like git or apt-get.
+//!
+//! ## Example
+//!
+//! TODO
+
 /// Unwraps a `Result`, writing a message to stderr and returning an `ExecutionError` on failure.
 #[macro_export]
 macro_rules! cmd_try {
@@ -108,6 +115,10 @@ impl<'c, 'p> Application<'c, 'p> {
         (ARGUMENT_ERROR_EXIT_CODE, None)
     }
 }
+
+/// Type synonym for applications with static-lifetime commands and parameters,
+/// which is how `Application` will typically be used.
+pub type StaticApplication = Application<'static, 'static>;
 
 /// Describes a command along with how to execute it and display help info for it.
 pub struct Command<'p> {
@@ -242,7 +253,7 @@ mod tests {
 
     #[test]
     fn application__print_usage__success() {
-        let mut sp = stream::Logger::new(Vec::new());
+        let mut sp = stream::Virtual::new();
         let params1: [Parameter; 2] = [
             Parameter { name: "PARAM1", required: true, repeating: true },
             Parameter { name: "PARAM2", required: false, repeating: false }];
@@ -259,8 +270,8 @@ mod tests {
 
         app.print_usage(&mut sp);
 
-        assert_eq!(0, sp.get_output().len());
-        assert_eq!(&expected, ::std::str::from_utf8(sp.get_error()).unwrap());
+        assert_eq!(0, sp.read_output().len());
+        assert_eq!(&expected, ::std::str::from_utf8(sp.read_error()).unwrap());
     }
 
     #[test]
@@ -269,7 +280,7 @@ mod tests {
 
         let sp = test_application_run(1, None, args);
 
-        assert_eq!(0, sp.get_output().len());
+        assert_eq!(0, sp.read_output().len());
         assert_eq!("\
             Usage: app COMMAND [ARGS]\n\n\
             commands:\n\
@@ -277,7 +288,7 @@ mod tests {
             cmd2                    desc2\n\
             cmd3                    desc3\n\
             cmd4                    desc4\n",
-            ::std::str::from_utf8(sp.get_error()).unwrap());
+            ::std::str::from_utf8(sp.read_error()).unwrap());
     }
 
     #[test]
@@ -288,7 +299,7 @@ mod tests {
 
         assert_eq!(
             "Error: Unrecognized command 'badcmd'\n",
-            ::std::str::from_utf8(sp.get_error()).unwrap());
+            ::std::str::from_utf8(sp.read_error()).unwrap());
     }
 
     #[test]
@@ -297,10 +308,10 @@ mod tests {
 
         let sp = test_application_run(1, Some("cmd1"), args);
 
-        assert_eq!(0, sp.get_output().len());
+        assert_eq!(0, sp.read_output().len());
         assert_eq!(
             "Usage: app cmd1 param1\n",
-            ::std::str::from_utf8(sp.get_error()).unwrap());
+            ::std::str::from_utf8(sp.read_error()).unwrap());
     }
 
     #[test]
@@ -309,8 +320,8 @@ mod tests {
 
         let sp = test_application_run(0, Some("cmd1"), args);
 
-        assert_eq!(0, sp.get_output().len());
-        assert_eq!(0, sp.get_error().len());
+        assert_eq!(0, sp.read_output().len());
+        assert_eq!(0, sp.read_error().len());
     }
 
     #[test]
@@ -319,10 +330,10 @@ mod tests {
 
         let sp = test_application_run(1, Some("cmd2"), args);
 
-        assert_eq!(0, sp.get_output().len());
+        assert_eq!(0, sp.read_output().len());
         assert_eq!(
             "Usage: app cmd2 param1\n",
-            ::std::str::from_utf8(sp.get_error()).unwrap());
+            ::std::str::from_utf8(sp.read_error()).unwrap());
     }
 
     #[test]
@@ -331,8 +342,8 @@ mod tests {
 
         let sp = test_application_run(2, Some("cmd3"), args);
 
-        assert_eq!(0, sp.get_output().len());
-        assert_eq!(0, sp.get_error().len());
+        assert_eq!(0, sp.read_output().len());
+        assert_eq!(0, sp.read_error().len());
     }
 
     #[test]
@@ -341,10 +352,10 @@ mod tests {
 
         let sp = test_application_run(2, Some("cmd4"), args);
 
-        assert_eq!(0, sp.get_output().len());
+        assert_eq!(0, sp.read_output().len());
         assert_eq!(
             "Inner error: :(\n",
-            ::std::str::from_utf8(sp.get_error()).unwrap());
+            ::std::str::from_utf8(sp.read_error()).unwrap());
     }
 
     #[test]
@@ -362,28 +373,28 @@ mod tests {
 
     #[test]
     fn command__print_usage__success() {
-        let mut sp = stream::Logger::new(Vec::new());
+        let mut sp = stream::Virtual::new();
         let params: [Parameter; 0] = [];
         let cmd = Command { name: "cmd", short_desc: "desc", params: &params, handler: dummy_success_handler };
         let expected = format!("Usage: app {}\n", cmd);
 
         cmd.print_usage(&mut sp, "app");
 
-        assert_eq!(0, sp.get_output().len());
-        assert_eq!(&expected, ::std::str::from_utf8(sp.get_error()).unwrap());
+        assert_eq!(0, sp.read_output().len());
+        assert_eq!(&expected, ::std::str::from_utf8(sp.read_error()).unwrap());
     }
 
     #[test]
     fn command__print_short_desc__success() {
-        let mut sp = stream::Logger::new(Vec::new());
+        let mut sp = stream::Virtual::new();
         let params: [Parameter; 0] = [];
         let cmd = Command { name: "cmd", short_desc: "the short desc", params: &params, handler: dummy_success_handler };
         let expected = "cmd                     the short desc\n".to_string();
 
         cmd.print_short_desc(&mut sp);
 
-        assert_eq!(0, sp.get_output().len());
-        assert_eq!(&expected.into_bytes()[..], sp.get_error());
+        assert_eq!(0, sp.read_output().len());
+        assert_eq!(&expected.into_bytes()[..], sp.read_error());
     }
 
     #[test]
@@ -555,9 +566,9 @@ mod tests {
         expected_exit_code: i32,
         expected_cmd_name: Option<&str>,
         args: Vec<String>)
-        -> stream::Logger
+        -> stream::Virtual
     {
-        let mut sp = stream::Logger::new(Vec::new());
+        let mut sp = stream::Virtual::new();
         let app = Application {
             name: "app",
             commands: &[

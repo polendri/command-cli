@@ -3,11 +3,10 @@ extern crate io_providers;
 
 use std::env;
 use std::process;
-use command_cli::{Application, Arguments, Command, CommandResult, Parameter};
+use command_cli::{Application, Arguments, Command, CommandResult, Parameter, StaticApplication};
 use io_providers::stream;
-use io_providers::StreamProvider;
 
-const APP: Application<'static, 'static> = Application {
+const APP: StaticApplication = Application {
     name: "app",
     commands: &[
         Command {
@@ -55,18 +54,18 @@ const APP: Application<'static, 'static> = Application {
 };
 
 #[allow(unused_variables)]
-fn cmd1_handler(sp: &mut StreamProvider, args: &Arguments) -> CommandResult {
+fn cmd1_handler(sp: &mut stream::Provider, args: &Arguments) -> CommandResult {
     // TODO: fill in these handlers, using cmd_try! and cmd_expect!
     CommandResult::Success
 }
 
 #[allow(unused_variables)]
-fn cmd2_handler(sp: &mut StreamProvider, args: &Arguments) -> CommandResult {
+fn cmd2_handler(sp: &mut stream::Provider, args: &Arguments) -> CommandResult {
     CommandResult::ArgumentError
 }
 
 #[allow(unused_variables)]
-fn cmd3_handler(sp: &mut StreamProvider, args: &Arguments) -> CommandResult {
+fn cmd3_handler(sp: &mut stream::Provider, args: &Arguments) -> CommandResult {
     CommandResult::ExecutionError(None)
 }
 

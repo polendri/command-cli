@@ -1,6 +1,6 @@
 [package]
 name = "command-cli"
-description = "A library for creating CLI applications in Rust with a command-style interface (like git or apt-get)"
+description = "A library for creating CLI applications in Rust which have a command-style interface (like git or apt-get)"
 version = "0.1.0"
 authors = ["Paul Hendry <paul@pshendry.com>"]
 repository = "https://github.com/pshendry/command-cli"
