@@ -3,7 +3,88 @@
 //!
 //! ## Example
 //!
-//! TODO
+//! ```no_run
+//! #[macro_use(cmd_try, cmd_expect)]
+//! extern crate command_cli;
+//! extern crate io_providers;
+//! 
+//! use std::env;
+//! use std::io::Write;
+//! use std::process;
+//! use command_cli::{Application, Arguments, Command, CommandResult, Parameter, StaticApplication};
+//! use io_providers::stream;
+//! 
+//! const APP: StaticApplication = Application {
+//!     name: "app",
+//!     commands: &[
+//!         Command {
+//!             name: "cmd1",
+//!             short_desc: "foos the bars via extensible frameworks",
+//!             params: &[
+//!                 Parameter {
+//!                     name: "FOO",
+//!                     required: true,
+//!                     repeating: false,
+//!                 },
+//!                 Parameter {
+//!                     name: "BAR",
+//!                     required: true,
+//!                     repeating: true,
+//!                 },
+//!             ],
+//!             handler: cmd1_handler,
+//!         },
+//!         Command {
+//!             name: "cmd2",
+//!             short_desc: "executes command #2 on the thing",
+//!             params: &[
+//!                 Parameter {
+//!                     name: "THING",
+//!                     required: false,
+//!                     repeating: false,
+//!                 },
+//!             ],
+//!             handler: cmd2_handler,
+//!         },
+//!         Command {
+//!             name: "cmd3",
+//!             short_desc: "runs command #3 on the files",
+//!             params: &[
+//!                 Parameter {
+//!                     name: "FILE",
+//!                     required: false,
+//!                     repeating: true,
+//!                 },
+//!             ],
+//!             handler: cmd3_handler,
+//!         },
+//!     ],
+//! };
+//! 
+//! fn cmd1_handler(sp: &mut stream::Provider, args: &Arguments) -> CommandResult {
+//!     let foo: &String = &args["FOO"][0];
+//!     let bars: &Vec<String> = &args["BAR"];
+//!     let home_dir = cmd_expect!(sp, env::home_dir(), "Error: Unable to get home directory");
+//!     CommandResult::Success
+//! }
+//! 
+//! fn cmd2_handler(sp: &mut stream::Provider, args: &Arguments) -> CommandResult {
+//!     let thing: Option<&String> = args["THING"].iter().next();
+//!     let var = cmd_try!(sp, env::var("ENV_VAR"), "Error: Unable to get 'ENV_VAR' environment variable");
+//!     CommandResult::ArgumentError
+//! }
+//! 
+//! fn cmd3_handler(sp: &mut stream::Provider, args: &Arguments) -> CommandResult {
+//!     CommandResult::ExecutionError(None)
+//! }
+//! 
+//! fn main() {
+//!     let args: Vec<String> = env::args().collect();
+//!     let mut sp = stream::Std::new();
+//!     let (exit_code, _) = APP.run(&mut sp, args);
+//!     process::exit(exit_code);
+//! }
+//! ```
 
 /// Unwraps a `Result`, writing a message to stderr and returning an `ExecutionError` on failure.
 #[macro_export]
@@ -35,11 +116,14 @@ macro_rules! cmd_expect {
 
 extern crate io_providers;
 
+use std::borrow::Borrow;
 use std::collections::HashMap;
 use std::error;
 use std::fmt;
+use std::hash::Hash;
 use std::io::Write;
 use std::iter::IntoIterator;
+use std::ops::Index;
 use io_providers::stream;
 
 const SUCCESS_EXIT_CODE: i32 = 0;
@@ -188,20 +272,16 @@ impl fmt::Display for Parameter {
 }
 
 /// Describes the arguments to a command.
-pub struct Arguments<'a> {
+pub struct Arguments {
     /// A mapping from `Parameter` to the associated arguments for that parameter.
-    param_to_args: HashMap<&'a Parameter, Vec<String>>,
+    param_to_args: HashMap<String, Vec<String>>,
 }
 
-impl<'a> Arguments<'a> {
-    pub fn for_param(&self, param: &Parameter) -> &Vec<String> {
-        &self.param_to_args[param]
-    }
-
+impl Arguments {
     /// Constructs a new `Arguments`, yielding `None` if the arguments do not
     /// match the provided parameter specification.
-    fn new<'b>(params: &'b [Parameter], args: Vec<String>) -> Option<Arguments<'b>> {
-        let mut param_to_args: HashMap<&Parameter, Vec<String>> = HashMap::new();
+    fn new(params: &[Parameter], args: Vec<String>) -> Option<Arguments> {
+        let mut param_to_args: HashMap<String, Vec<String>> = HashMap::new();
         let mut min_remaining = params.iter().filter(|p| p.required).count();
         let mut remaining = args.len() - 2;
         let mut args_iter = args.into_iter();
@@ -233,7 +313,7 @@ impl<'a> Arguments<'a> {
             }
             remaining = remaining - param_args_count;
 
-            param_to_args.insert(param, param_args);
+            param_to_args.insert(String::from(param.name), param_args);
         }
 
         if remaining > 0 {
@@ -243,6 +323,17 @@ impl<'a> Arguments<'a> {
         }
     }
 }
+
+impl<'a, S: ?Sized> Index<&'a S> for Arguments
+    where String: Borrow<S>, S: Eq + Hash
+{
+    type Output = Vec<String>;
+
+    fn index(&self, index: &S) -> &Vec<String> {
+        &self.param_to_args[index]
+    }
+}
+
 
 #[cfg(test)]
 #[allow(non_snake_case)]
@@ -450,7 +541,7 @@ mod tests {
 
         let arguments = Arguments::new(params, args).unwrap();
 
-        assert_eq!(0, arguments.for_param(&params[0]).len());
+        assert_eq!(0, arguments[params[0].name].len());
     }
 
     #[test]
@@ -463,8 +554,8 @@ mod tests {
 
         let arguments = Arguments::new(params, args).unwrap();
 
-        assert_eq!(&vec![arg1], arguments.for_param(&params[0]));
-        assert_eq!(&vec![arg2], arguments.for_param(&params[1]));
+        assert_eq!(vec![arg1], arguments[params[0].name]);
+        assert_eq!(vec![arg2], arguments[params[1].name]);
     }
 
     #[test]
@@ -475,7 +566,7 @@ mod tests {
 
         let arguments = Arguments::new(params, args.clone()).unwrap();
 
-        assert_eq!(&vec![arg1, arg2], arguments.for_param(&params[0]));
+        assert_eq!(vec![arg1, arg2], arguments[params[0].name]);
     }
 
     #[test]
@@ -488,22 +579,22 @@ mod tests {
 
         let arguments = Arguments::new(params, args).unwrap();
 
-        assert_eq!(&vec![arg1, arg2], arguments.for_param(&params[0]));
-        assert_eq!(&vec![arg3], arguments.for_param(&params[1]));
+        assert_eq!(vec![arg1, arg2], arguments[params[0].name]);
+        assert_eq!(vec![arg3], arguments[params[1].name]);
     }
 
     #[test]
     fn arguments__new__required_then_repeating__success() {
         let params = &[
-            Parameter { name: "PARAM", required: true, repeating: false },
-            Parameter { name: "PARAM", required: true, repeating: true }];
+            Parameter { name: "PARAM1", required: true, repeating: false },
+            Parameter { name: "PARAM2", required: true, repeating: true }];
         let (arg1, arg2, arg3) = ("arg1".to_string(), "arg2".to_string(), "arg3".to_string());
         let args = vec!["app".to_string(), "cmd".to_string(), arg1.clone(), arg2.clone(), arg3.clone()];
 
         let arguments = Arguments::new(params, args).unwrap();
 
-        assert_eq!(&vec![arg1], arguments.for_param(&params[0]));
-        assert_eq!(&vec![arg2, arg3], arguments.for_param(&params[1]));
+        assert_eq!(vec![arg1], arguments[params[0].name]);
+        assert_eq!(vec![arg2, arg3], arguments[params[1].name]);
     }
 
     #[test]
@@ -516,8 +607,8 @@ mod tests {
 
         let arguments = Arguments::new(params, args.clone()).unwrap();
 
-        assert_eq!(0, arguments.for_param(&params[0]).len());
-        assert_eq!(&vec![arg1], arguments.for_param(&params[1]));
+        assert_eq!(0, arguments[params[0].name].len());
+        assert_eq!(vec![arg1], arguments[params[1].name]);
     }
 
     #[test]
@@ -530,8 +621,8 @@ mod tests {
 
         let arguments = Arguments::new(params, args).unwrap();
 
-        assert_eq!(&vec![arg1], arguments.for_param(&params[0]));
-        assert_eq!(&vec![arg2], arguments.for_param(&params[1]));
+        assert_eq!(vec![arg1], arguments[params[0].name]);
+        assert_eq!(vec![arg2], arguments[params[1].name]);
     }
 
     #[test]
@@ -544,8 +635,8 @@ mod tests {
 
         let arguments = Arguments::new(params, args.clone()).unwrap();
 
-        assert_eq!(&vec![arg1], arguments.for_param(&params[0]));
-        assert_eq!(0, arguments.for_param(&params[1]).len());
+        assert_eq!(vec![arg1], arguments[params[0].name]);
+        assert_eq!(0, arguments[params[1].name].len());
     }
 
     #[test]
@@ -558,8 +649,8 @@ mod tests {
 
         let arguments = Arguments::new(params, args).unwrap();
 
-        assert_eq!(&vec![arg1], arguments.for_param(&params[0]));
-        assert_eq!(&vec![arg2], arguments.for_param(&params[1]));
+        assert_eq!(vec![arg1], arguments[params[0].name]);
+        assert_eq!(vec![arg2], arguments[params[1].name]);
     }
 
     fn test_application_run(
